@@ -156,6 +156,25 @@ input{font-family:inherit}
 .modes .note{font-size:12.5px;color:var(--mut);max-width:520px}
 #netMsg{min-height:20px;font-size:13.5px;color:#ff9a8a;font-weight:600}
 
+/* Profils */
+#btnProfile{cursor:pointer;color:var(--txt);max-width:190px;overflow:hidden;text-overflow:ellipsis}
+#btnProfile:hover{filter:brightness(1.25)}
+.profBox{width:min(700px,94vw);text-align:left}
+.profBox h2,.profBox > .sub{text-align:center}
+.profBox h3{font-size:17px;margin:18px 0 6px}
+.plist{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow:auto}
+.prow{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:#0d0f14aa;border:1px solid #2f3542}
+.prow.on{border-color:var(--gold);box-shadow:0 0 12px #ffcc4d33}
+.pinfo{flex:1;min-width:0}
+.pname{font-weight:800;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.psum{font-size:12px;color:var(--mut);margin-top:2px}
+.pbtns{display:flex;gap:6px;align-items:center}
+.pbtns .btn{padding:7px 12px;font-size:13.5px}
+.pcur{font-size:12px;font-weight:800;color:var(--gold)}
+.pnew{display:flex;gap:8px;margin-top:10px}
+.pnew input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid #4b5264;background:#0d0f14;color:var(--txt);font-size:14px}
+.psafe{font-size:13px;color:#c9c5ba;line-height:1.5;margin-bottom:12px}
+
 /* Mode créateur */
 .devBox{width:min(720px,94vw);text-align:left}
 .devBox h2,.devBox > .sub{text-align:center}
@@ -291,7 +310,7 @@ input{font-family:inherit}
       <div class="pill" id="pillI" title="Expérience de l'Invocateur">🃏 ✦ <b id="xpI">0</b></div>
       <button id="btnDev" class="iconbtn" title="Mode créateur">🛠️</button>
       <button id="btnSound" class="iconbtn" title="Son">🔊</button>
-      <button id="btnReset" class="iconbtn" title="Effacer la sauvegarde">🗑️</button>
+      <button id="btnProfile" class="pill" title="Profils et sauvegarde">👤 <span id="profName"></span></button>
     </div>
   </header>
   <div id="hubMain">
@@ -384,10 +403,10 @@ input{font-family:inherit}
 <div id="modalRoot"></div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/data.js?v=1795025419"></script>
-<script src="js/fx.js?v=1795025419"></script>
-<script src="js/sim.js?v=1795025419"></script>
-<script src="js/net.js?v=1795025419"></script>
-<script src="js/ui.js?v=1795025419"></script>
+<script src="js/data.js?v=1795027030"></script>
+<script src="js/fx.js?v=1795027030"></script>
+<script src="js/sim.js?v=1795027030"></script>
+<script src="js/net.js?v=1795027030"></script>
+<script src="js/ui.js?v=1795027030"></script>
 </body>
 </html>

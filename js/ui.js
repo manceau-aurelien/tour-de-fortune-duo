@@ -51,6 +51,7 @@ function refreshHub() {
   $('#xpT').textContent = fmt(save.tower.xp); $('#xpI').textContent = fmt(save.inv.xp);
   $('#pillT').classList.toggle('on', TAB === 'tower'); $('#pillI').classList.toggle('on', TAB === 'inv');
   $('#btnSound').textContent = save.sound ? '🔊' : '🔇';
+  $('#profName').textContent = curProfile().name;
   const st = save.stats;
   $('#statsLine').textContent = `Parties : ${st.runs} · Victoires : ${st.wins} · Meilleure vague : ${st.bestWave >= WAVES.length ? 'Roi-Liche vaincu' : st.bestWave + '/' + WAVES.length} · Ennemis vaincus : ${fmt(st.kills)}`;
   $('#btnLobbyBack').classList.toggle('hidden', !(NET.mode === 'host' || (NET.mode === 'guest' && NET.open)));
@@ -67,9 +68,103 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
   if (TAB === 'tower' || TAB === 'inv') centerTree();
 });
 $('#btnSound').onclick = () => { mutateSave(s => s.sound = !s.sound); refreshHub(); if (save.sound) SFX.card(); };
-$('#btnReset').onclick = () => {
-  if (confirm('Effacer toute la progression (les deux arbres, la collection) ?')) { localStorage.removeItem(SAVE_KEY); save = loadSave(); refreshHub(); centerTree(); }
-};
+// ---------- profils et sauvegarde ----------
+const escHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+function profSummary(id) {
+  const s = readSaveKey(profKey(id)) || defaultSave();
+  return `🏹 ${countNodes(s.tower.nodes)} pts · 🃏 ${countNodes(s.inv.nodes)} pts · ${s.stats.runs} partie(s)${s.savedAt ? ' · ' + new Date(s.savedAt).toLocaleDateString('fr-FR') : ''}`;
+}
+function switchProfile(id) {
+  if (NET.mode !== 'solo') { toast('Quittez le salon en ligne avant de changer de profil.', 1); return false; }
+  ACTIVE_PROFILE = id; PROFILES.active = id; saveProfiles();
+  try { sessionStorage.setItem('tfd_profile', id); } catch (e) { }
+  save = loadSave(); TAB = save.lastRole || 'tower';
+  refreshHub(); centerTree();
+  return true;
+}
+function exportSave() {
+  const p = curProfile();
+  const data = { game: 'tour-de-fortune-duo', v: 2, profile: p.name, date: new Date().toISOString(), save: loadSave() };
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  const safe = p.name.normalize('NFD').replace(/[^\w-]+/g, '_').slice(0, 30) || 'profil';
+  a.href = URL.createObjectURL(blob); a.download = `tour-de-fortune-${safe}-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  mutateSave(s => s.exportedAt = Date.now());
+  toast('Sauvegarde exportée dans vos téléchargements.');
+}
+function importSave(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    let d = null; try { d = JSON.parse(r.result); } catch (e) { }
+    const s = d && (d.save || d);
+    if (!validSave(s)) { toast('Ce fichier n\'est pas une sauvegarde du jeu.', 1); return; }
+    // l'import crée toujours un nouveau profil : il n'écrase jamais une partie existante
+    const id = 'p' + Date.now().toString(36);
+    let name = (d.profile || 'Profil importé') + ' (importé)';
+    PROFILES.list.push({ id, name, created: Date.now() }); saveProfiles();
+    writeSaveKey(profKey(id), normalizeSave(s));
+    switchProfile(id); openProfiles();
+    toast(`Sauvegarde importée dans le profil « ${name} ».`);
+  };
+  r.readAsText(file);
+}
+function openProfiles() {
+  const rows = PROFILES.list.map(p => `<div class="prow ${p.id === ACTIVE_PROFILE ? 'on' : ''}">
+      <div class="pinfo"><div class="pname">${p.id === ACTIVE_PROFILE ? '✔ ' : ''}${escHtml(p.name)}</div><div class="psum">${profSummary(p.id)}</div></div>
+      <div class="pbtns">
+        ${p.id === ACTIVE_PROFILE ? '<span class="pcur">Profil actuel</span>' : `<button class="btn gold" data-use="${p.id}">Jouer avec</button>`}
+        <button class="iconbtn" data-ren="${p.id}" title="Renommer">✏️</button>
+        ${PROFILES.list.length > 1 ? `<button class="iconbtn" data-del="${p.id}" title="Supprimer ce profil">🗑️</button>` : ''}
+      </div></div>`).join('');
+  const s = loadSave();
+  const safe = STORAGE_SAFE === true ? '🛡️ Stockage protégé : le navigateur ne l\'effacera pas tout seul.' : 'ℹ️ Le navigateur peut effacer les données des sites lors d\'un nettoyage : exportez votre sauvegarde de temps en temps.';
+  $('#modalRoot').innerHTML = `<div class="modal"><div class="mbox profBox">
+    <button class="mclose" id="mClose">✕</button>
+    <h2 class="tf">👤 Profils</h2>
+    <div class="sub">Un profil par partenaire de jeu : chacun garde ses propres arbres et sa progression.</div>
+    <div class="plist">${rows}</div>
+    <div class="pnew"><input id="newProf" maxlength="24" placeholder="Nom du nouveau profil (ex. : avec Julie)"><button class="btn green" id="btnNewProf">＋ Créer</button></div>
+    <h3 class="tf">💾 Sauvegarde de « ${escHtml(curProfile().name)} »</h3>
+    <div class="psafe">${safe}<br>Copie de secours automatique à chaque enregistrement.${s.exportedAt ? ` Dernier export : ${new Date(s.exportedAt).toLocaleDateString('fr-FR')}.` : ' Jamais exportée.'}</div>
+    <div class="mbtns"><button class="btn" id="btnExport">⬇ Exporter dans un fichier</button><button class="btn" id="btnImport">⬆ Importer un fichier</button><input type="file" id="fileImport" accept=".json,application/json" class="hidden"></div>
+  </div></div>`;
+  $('#mClose').onclick = () => { closeModal(); refreshHub(); };
+  $$('.profBox [data-use]').forEach(b => b.onclick = () => { if (switchProfile(b.dataset.use)) { SFX.node(); openProfiles(); } });
+  $$('.profBox [data-ren]').forEach(b => b.onclick = () => {
+    const p = PROFILES.list.find(x => x.id === b.dataset.ren);
+    const n = prompt('Nouveau nom du profil :', p.name);
+    if (n && n.trim()) { p.name = n.trim().slice(0, 24); saveProfiles(); openProfiles(); refreshHub(); }
+  });
+  $$('.profBox [data-del]').forEach(b => b.onclick = () => {
+    const p = PROFILES.list.find(x => x.id === b.dataset.del);
+    const n = prompt(`Supprimer définitivement le profil « ${p.name} » et toute sa progression ?\nCette action est irréversible. Pour confirmer, tapez son nom :`);
+    if (n === null) return;
+    if (n.trim() !== p.name) { toast('Nom différent : profil conservé.', 1); return; }
+    PROFILES.list = PROFILES.list.filter(x => x.id !== p.id); saveProfiles();
+    try { localStorage.removeItem(profKey(p.id)); localStorage.removeItem(profKey(p.id) + '_bak'); } catch (e) { }
+    if (p.id === ACTIVE_PROFILE) switchProfile(PROFILES.list[0].id);
+    toast(`Profil « ${p.name} » supprimé.`); openProfiles();
+  });
+  const create = () => {
+    const name = ($('#newProf').value || '').trim().slice(0, 24);
+    if (!name) { toast('Donnez un nom au profil.', 1); return; }
+    if (NET.mode !== 'solo') { toast('Quittez le salon en ligne avant de changer de profil.', 1); return; }
+    const id = 'p' + Date.now().toString(36);
+    PROFILES.list.push({ id, name, created: Date.now() }); saveProfiles();
+    writeSaveKey(profKey(id), Object.assign(defaultSave(), { intro: true }));
+    switchProfile(id); SFX.node(); openProfiles();
+    toast(`Profil « ${name} » créé : nouvelle progression depuis zéro.`);
+  };
+  $('#btnNewProf').onclick = create;
+  $('#newProf').onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') create(); };
+  $('#btnExport').onclick = exportSave;
+  $('#btnImport').onclick = () => $('#fileImport').click();
+  $('#fileImport').onchange = e => { const f = e.target.files[0]; if (f) importSave(f); };
+}
+$('#btnProfile').onclick = () => openProfiles();
+
 const gameDiff = () => DEV_MODE ? save.dev.diff : 'hard';
 $('#btnDev').classList.toggle('hidden', !DEV_MODE);
 $('#btnDev').onclick = () => { if (DEV_MODE) openDevPanel(); };

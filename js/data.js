@@ -317,6 +317,7 @@ const DIFFS = {
   hard: { n: 'Difficile', hp: 1.4, atk: 1.4, c: '#ff6a5a' },
 };
 const SAVE_KEY = 'tourFortuneDuo_v2';
+const PROFILES_KEY = 'tourFortuneDuo_profiles';
 function defaultSave() {
   return {
     tower: { xp: 0, nodes: { core: 1 } }, inv: { xp: 0, nodes: { core: 1 } },
@@ -324,16 +325,52 @@ function defaultSave() {
     dev: { diff: 'hard', xpMult: 1 },
   };
 }
-function loadSave() {
-  try {
-    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
-    if (s && s.tower && s.inv) { const d = defaultSave(); return Object.assign(d, s, { stats: Object.assign(d.stats, s.stats), dev: Object.assign(d.dev, s.dev) }); }
-  } catch (e) { }
-  return defaultSave();
+const validSave = s => !!(s && s.tower && s.inv && s.tower.nodes && s.inv.nodes);
+function normalizeSave(s) { const d = defaultSave(); return Object.assign(d, s, { stats: Object.assign(d.stats, s.stats), dev: Object.assign(d.dev, s.dev) }); }
+
+// ---------- profils (une sauvegarde séparée par profil) ----------
+function loadProfiles() {
+  try { const p = JSON.parse(localStorage.getItem(PROFILES_KEY)); if (p && p.list && p.list.length) return p; } catch (e) { }
+  return { active: 'main', list: [{ id: 'main', name: 'Mon profil', created: Date.now() }] };
 }
+let PROFILES = loadProfiles();
+function saveProfiles() { try { localStorage.setItem(PROFILES_KEY, JSON.stringify(PROFILES)); } catch (e) { } }
+saveProfiles();
+const profKey = id => id === 'main' ? SAVE_KEY : SAVE_KEY + '_' + id;
+// chaque onglet garde son profil (pratique pour jouer à deux sur le même PC)
+let ACTIVE_PROFILE = (() => {
+  let id = null; try { id = sessionStorage.getItem('tfd_profile'); } catch (e) { }
+  if (!id || !PROFILES.list.some(p => p.id === id)) id = PROFILES.list.some(p => p.id === PROFILES.active) ? PROFILES.active : PROFILES.list[0].id;
+  return id;
+})();
+const curProfile = () => PROFILES.list.find(p => p.id === ACTIVE_PROFILE) || PROFILES.list[0];
+
+// ---------- lecture / écriture sécurisées ----------
+// Chaque écriture garde la version précédente dans une copie de secours (_bak).
+// Si la sauvegarde principale est illisible, la copie de secours est utilisée.
+function readSaveKey(key) {
+  for (const k of [key, key + '_bak']) {
+    try { const s = JSON.parse(localStorage.getItem(k)); if (validSave(s)) return normalizeSave(s); } catch (e) { }
+  }
+  return null;
+}
+function loadSave() { return readSaveKey(profKey(ACTIVE_PROFILE)) || defaultSave(); }
 let save = loadSave();
+let SAVE_ERROR = false;
+function writeSaveKey(key, s) {
+  try {
+    const prev = localStorage.getItem(key);
+    if (prev) { try { if (validSave(JSON.parse(prev))) localStorage.setItem(key + '_bak', prev); } catch (e) { } }
+    localStorage.setItem(key, JSON.stringify(s));
+    SAVE_ERROR = false;
+  } catch (e) { SAVE_ERROR = true; }
+}
 function mutateSave(fn) {
   const s = loadSave(); fn(s);
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch (e) { }
+  s.savedAt = Date.now();
+  writeSaveKey(profKey(ACTIVE_PROFILE), s);
   save = s;
 }
+// demande au navigateur de ne jamais effacer automatiquement les données du jeu
+let STORAGE_SAFE = null;
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(ok => STORAGE_SAFE = ok).catch(() => { }); } catch (e) { }
