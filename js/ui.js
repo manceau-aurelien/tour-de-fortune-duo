@@ -723,7 +723,7 @@ document.addEventListener('visibilitychange', () => {
 // ---------- dessins locaux sur le terrain ----------
 function drawLocalUnder(c, R) {
   if (ROLE === 'tower' && LOCAL.mode && R.phase !== 'end') {
-    const m = LOCAL.mouse, r = LOCAL.mode === 'glue' ? MY.ST.glueR : 130;
+    const m = LOCAL.mouse, r = LOCAL.mode === 'glue' ? MY.ST.glueR : RAIN_R;
     const col = LOCAL.mode === 'glue' ? '240,207,85' : '255,233,176';
     c.fillStyle = `rgba(${col},0.16)`; c.strokeStyle = `rgba(${col},0.9)`; c.lineWidth = 2.5; c.setLineDash([10, 8]);
     c.beginPath(); c.ellipse(m.x, m.y, r, r * (LOCAL.mode === 'glue' ? 0.58 : 0.6), 0, 0, 7); c.fill(); c.stroke(); c.setLineDash([]);

@@ -147,10 +147,22 @@ function towerRain(x, y) {
   if (T.rainCd > 0) return `Pluie prête dans ${Math.ceil(T.rainCd)} s`;
   T.rainCd = S.rainCd;
   fx('sfx', 'bow'); fx('text', x, y - 70, 'Pluie de flèches !', '#ffe9b0', 18, 1.2);
-  for (let i = 0; i < 30; i++) {
-    const a = rand(0, 7), r = Math.sqrt(Math.random()) * 130, px = x + Math.cos(a) * r, py = y + Math.sin(a) * r * 0.6, d = i * 0.065;
+  // 45 flèches en 2,2 s : chacune touche tous les ennemis proches de son impact,
+  // avec les bonus de l'archer (critique, Tueur de géants, feu, givre), et cloue au sol.
+  const R = RAIN_R;
+  for (let i = 0; i < 45; i++) {
+    const a = rand(0, 7), r = Math.sqrt(Math.random()) * R, px = x + Math.cos(a) * r, py = y + Math.sin(a) * r * 0.6, d = i * 0.05;
     later(d, () => fx('rainArrow', px, py));
-    later(d + 0.32, () => { for (const e of G.enemies) if (!e.dead && Math.hypot(e.x - px, e.y - py) < 24 + e.rad) damageEnemy(e, S.dmg * 0.7, true); });
+    later(d + 0.32, () => {
+      for (const e of G.enemies) {
+        if (e.dead || Math.hypot(e.x - px, e.y - py) > 32 + e.rad) continue;
+        const crit = Math.random() < S.crit;
+        const dmg = S.dmg * 1.3 * (crit ? 2.5 : 1) * (S.giant && (e.boss || e.type === 'ogre' || e.type === 'troll') ? 1 + S.giant : 1);
+        if (S.burn) { e.burnT = 3; e.burnDps = Math.max(e.burnDps, S.dmg * S.burn / 3); }
+        e.slowF = e.slowT > 0 ? Math.max(e.slowF, 0.4, S.frost) : Math.max(0.4, S.frost); e.slowT = Math.max(e.slowT, 2);
+        damageEnemy(e, dmg, !crit, crit);
+      }
+    });
   }
   return null;
 }
@@ -158,7 +170,8 @@ function updTower(dt) {
   const T = G.tower, S = G.ST;
   T.hitT = Math.max(0, T.hitT - dt);
   T.reload = Math.max(0, T.reload - dt); T.reloadK = T.reload;
-  T.glueCd = Math.max(0, T.glueCd - dt); T.rainCd = Math.max(0, T.rainCd - dt);
+  // les sorts de la tour ne se rechargent que pendant les vagues (comme l'invocation)
+  if (G.phase === 'wave') { T.glueCd = Math.max(0, T.glueCd - dt); T.rainCd = Math.max(0, T.rainCd - dt); }
   if (G.phase === 'end') { if (G.result === 'lose') T.fall = Math.min(1, T.fall + dt * 0.6); return; }
   if (G.phase === 'wave' && S.regen && T.hp < T.max) T.hp = Math.min(T.max, T.hp + S.regen * dt);
 }

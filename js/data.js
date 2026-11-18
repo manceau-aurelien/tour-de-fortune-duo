@@ -19,6 +19,7 @@ const DEV_MODE = location.protocol === 'file:' || ['localhost', '127.0.0.1', '']
 const W = 1600, H = 1000, TX = 800, TY = 520, TR = 44;
 const OX = TX, OY = TY - 112;          // point de départ des flèches (haut de la tour)
 const ARROW_SPD = 1050;
+const RAIN_R = 150;          // rayon de la Pluie de flèches
 
 const RAR = {
   N: { n: 'Normale', c: '#b8c0cc' },
@@ -131,13 +132,13 @@ const TREES = {
       // ALCHIMIE (bas droite)
       { id: 'L1', b: 'L', x: 1.3, y: 0.55, ic: '🔥', n: 'Flèches enflammées', d: 'Les flèches enflamment leur cible : +40 % de dégâts sur 3 s.', max: 2, cost: 25, g: 2.4, req: ['core'], e: { burn: 0.4 } },
       { id: 'L2', b: 'L', x: 2.4, y: 0.1, ic: '❄️', n: 'Flèches givrées', d: 'Les flèches ralentissent leur cible de 25 % pendant 1,5 s.', max: 2, cost: 30, g: 2.2, req: ['L1'], e: { frost: 0.25 } },
-      { id: 'L3', b: 'L', x: 2.0, y: 1.5, ic: '🍯', n: 'Pot de glu', d: 'Nouveau sort (touche Q) : un pot de glu ralentit fortement les monstres au sol dans une zone. Recharge : 40 s.', max: 1, cost: 70, req: ['L1'], e: { glue: 1 } },
+      { id: 'L3', b: 'L', x: 2.0, y: 1.5, ic: '🍯', n: 'Pot de glu', d: 'Nouveau sort (touche Q) : un pot de glu ralentit fortement les monstres au sol dans une zone. Recharge : 40 s, uniquement pendant les vagues.', max: 1, cost: 70, req: ['L1'], e: { glue: 1 } },
       { id: 'L4', b: 'L', x: 3.0, y: 2.0, ic: '🕸️', n: 'Glu tenace', d: 'Les monstres pris dans la glu sont totalement immobilisés pendant 1,5 s de plus.', max: 2, cost: 90, g: 2, req: ['L3'], e: { glueStop: 1.5 } },
       { id: 'L5', b: 'L', x: 2.2, y: 2.9, ic: '🫕', n: 'Grand chaudron', d: '+25 % de zone pour la glu.', max: 2, cost: 60, g: 2, req: ['L3'], e: { glueRad: 0.25 } },
       { id: 'L6', b: 'L', x: 4.1, y: 2.2, ic: '⏳', n: 'Recette rapide', d: '−15 % de temps de recharge de la glu.', max: 3, cost: 100, g: 1.8, req: ['L4'], e: { glueCd: 1 } },
       { id: 'L7', b: 'L', x: 3.5, y: 0.35, ic: '💣', n: 'Flèches explosives', d: 'Les flèches explosent à l\'impact et touchent les ennemis proches (50 % des dégâts).', max: 1, cost: 220, req: ['L2'], e: { explode: 1 } },
       { id: 'L8', b: 'L', x: 3.2, y: 3.5, ic: '🧪', n: 'Glu acide', d: 'La glu ronge les monstres : 8 dégâts par seconde.', max: 2, cost: 160, g: 2, req: ['L5'], e: { acid: 8 } },
-      { id: 'L9', b: 'L', x: 5.2, y: 2.7, ic: '🌧️', n: 'Pluie de flèches', d: 'Nouveau sort (touche E) : 30 flèches s\'abattent sur une zone. Recharge : 45 s.', max: 1, cost: 450, req: ['L6'], e: { rain: 1 } },
+      { id: 'L9', b: 'L', x: 5.2, y: 2.7, ic: '🌧️', n: 'Pluie de flèches', d: 'Nouveau sort (touche E) : 45 flèches s\'abattent sur une large zone. Chacune touche tous les ennemis autour de son impact (130 % des dégâts d\'une flèche, critiques et bonus compris) et les ralentit de 40 %. Recharge : 35 s.', max: 1, cost: 450, req: ['L6'], e: { rain: 1 } },
     ],
   },
   inv: {
@@ -279,7 +280,7 @@ function towerStats(nodes) {
     repair: g('repair'), thorns: g('thorns'), regen: g('regen'), armor: g('armor'),
     burn: g('burn'), frost: g('frost'), explode: g('explode') > 0,
     glue: g('glue') > 0, glueStop: g('glueStop'), glueR: 110 * (1 + g('glueRad')), glueCd: 40 * Math.pow(0.85, g('glueCd')), acid: g('acid'),
-    rain: g('rain') > 0, rainCd: 45,
+    rain: g('rain') > 0, rainCd: 35,
   };
 }
 function invStats(nodes) {
