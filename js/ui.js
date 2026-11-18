@@ -184,7 +184,12 @@ function nodeTipHtml(n) {
     const cost = nodeCost(n, lv);
     foot = `<div class="foot">${n.max > 1 ? `Niveau ${lv} → ${lv + 1} · ` : ''}<span style="color:${xp >= cost ? '#9fe3ff' : '#ff7a6a'}">✦ ${fmt(cost)} XP</span></div>`;
   }
-  return `<h4>${n.ic} ${n.n}</h4><div class="sub" style="color:${c}">${T.br[n.b].n}${n.max > 1 ? ` · ${lv}/${n.max}` : ''}</div>${n.d}${foot}`;
+  let eff = '';
+  if (n.max > 1 && n.e) {
+    const cur = nodeEffectText(n, lv), nxt = lv < n.max ? nodeEffectText(n, lv + 1) : '';
+    eff = `<div class="eff">${cur ? `<div><span>Actuel</span>${cur}</div>` : ''}${nxt ? `<div class="nx"><span>Niveau ${lv + 1}</span>${nxt}</div>` : ''}</div>`;
+  }
+  return `<h4>${n.ic} ${n.n}</h4><div class="sub" style="color:${c}">${T.br[n.b].n}${n.max > 1 ? ` · ${lv}/${n.max}` : ''}</div>${n.d}${n.max > 1 ? ' <i style="color:#9aa0ab">(par niveau)</i>' : ''}${eff}${foot}`;
 }
 function buyNode(id, el) {
   const key = curKey(), n = curTree().map[id], st = nodeState(n);

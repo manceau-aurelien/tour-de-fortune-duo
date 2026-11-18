@@ -201,6 +201,56 @@ const TREES = {
   },
 };
 for (const k in TREES) { const T = TREES[k]; T.map = {}; T.nodes.forEach(n => T.map[n.id] = n); }
+// Texte de l'effet total d'un nœud à un niveau donné (affiché dans l'info-bulle)
+const pct = v => Math.round(v * 100) + ' %';
+const sec = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + ' s';
+const plur = (v, w) => v + ' ' + w + (v > 1 ? 's' : '');
+const EFX = {
+  charge: v => `arc bandé ${pct(1 - Math.pow(0.85, v))} plus vite`,
+  aDmg: v => `+${pct(v)} de dégâts des flèches`,
+  cadence: v => `+${pct(Math.pow(1.15, v) - 1)} de cadence de tir`,
+  range: v => `+${pct(v)} de portée`,
+  crit: v => `${pct(v)} de chances de coup critique`,
+  pierce: v => `traverse ${plur(v, 'ennemi')}`,
+  giant: v => `+${pct(v)} contre Ogres, Trolls et boss`,
+  tHp: v => `+${v} PV pour la tour`,
+  repair: v => `${pct(v)} des PV réparés entre les vagues`,
+  thorns: v => `${v} dégâts renvoyés à chaque coup`,
+  regen: v => `${sec(v).replace(' s', '')} PV par seconde pendant les vagues`,
+  armor: v => `−${pct(v)} de dégâts subis`,
+  burn: v => `brûlure : +${pct(v)} de dégâts sur 3 s`,
+  frost: v => `ralentit de ${pct(v)} pendant 1,5 s`,
+  glueStop: v => `immobilise pendant ${sec(v)}`,
+  glueRad: v => `+${pct(v)} de zone de glu`,
+  glueCd: v => `recharge de la glu : ${sec(40 * Math.pow(0.85, v))}`,
+  acid: v => `${v} dégâts par seconde dans la glu`,
+  drawSpd: v => `une carte toutes les ${sec(10 * Math.pow(0.9, v))}`,
+  hand: v => `+${plur(v, 'carte')} en main`,
+  luck: v => `Fortune +${v}`,
+  startDraw: v => `+${plur(v, 'carte')} au début de chaque vague`,
+  drawN: v => `+${plur(v, 'carte')} à chaque pioche`,
+  upDraw: v => `${pct(v)} de chances d'un rang en plus`,
+  fuseBonus: v => `+${pct(v)} de puissance après fusion`,
+  poseCd: v => `invocation toutes les ${sec(15 - v)}`,
+  reserve: v => `+${plur(v, 'invocation')} en réserve`,
+  recycle: v => `jeter une carte : −${sec(v)} sur l'invocation`,
+  freePose: v => `${pct(v)} de chances d'invocation gratuite`,
+  fDmg: v => `+${pct(v)} de dégâts des combattants`,
+  fHp: v => `+${pct(v)} de PV des combattants`,
+  fAs: v => `+${pct(v)} de vitesse d'attaque`,
+  fHeal: v => `soin entre les vagues : ${pct(0.3 + v)} des PV`,
+  sDmg: v => `+${pct(v)} de dégâts des effets`,
+  bolt: v => `Éclair +${plur(v, 'frappe')}, Orage +${3 * v} frappes`,
+  area: v => `+${pct(v)} de zone des effets`,
+  dur: v => `+${pct(v)} de durée des tempêtes`,
+  chain: v => `rebond sur ${plur(v, 'ennemi')}`,
+  freeze: v => `+${pct(v)} de durée des ralentissements`,
+  echo: v => `${pct(v)} de chances d'écho`,
+};
+function nodeEffectText(n, lv) {
+  if (!n.e || lv <= 0) return '';
+  return Object.keys(n.e).filter(k => EFX[k]).map(k => EFX[k](Math.round(n.e[k] * lv * 1000) / 1000)).join(' · ');
+}
 const COSTK = 1;   // multiplicateur global du prix des nœuds
 const nodeCost = (n, lv) => Math.round(n.cost * COSTK * Math.pow(n.g || 2, lv));
 
