@@ -240,6 +240,7 @@ function invPlay(uid, x, y) {
   const def = CARDS[card.id];
   if (def.type === 'spell' && def.id !== 'benediction' && !liveEnemies().length) return 'Aucun ennemi à viser';
   x = clamp(x, 40, W - 40); y = clamp(y, 100, H - 40);
+  if (def.type === 'fighter' && !def.u.fly) { const d = Math.hypot(x - TX, y - TY), m = TR + def.u.rad + 14; if (d < m) { const a = d > 1 ? Math.atan2(y - TY, x - TX) : Math.PI / 2; x = TX + Math.cos(a) * m; y = TY + Math.sin(a) * m; } }
   I.hand.splice(I.hand.indexOf(card), 1);
   if (!(G.SI.freePose && Math.random() < G.SI.freePose)) { if (I.charges >= G.SI.charges) I.poseT = 0; I.charges--; }
   else fx('text', x, y - 70, 'Élan : invocation gratuite !', '#e0b3ff', 15, 1.2);
@@ -581,7 +582,14 @@ function simUpdate(dt) {
   G.tasks = G.tasks.filter(t => !t.done);
   updTower(dt);
   updGlues(dt);
-  for (const f of G.fighters) updFighter(f, dt);
+  for (const f of G.fighters) {
+    updFighter(f, dt);
+    if (f.fly || f.dead) continue;
+    const d = Math.hypot(f.x - TX, f.y - TY), m = TR + f.rad - 2;
+    if (d < m) { const a = d > 0.01 ? Math.atan2(f.y - TY, f.x - TX) : Math.PI / 2; f.x = TX + Math.cos(a) * m; f.y = TY + Math.sin(a) * m; }
+    const dh = Math.hypot(f.hx - TX, f.hy - TY);
+    if (dh < m + 8) { const a = dh > 0.01 ? Math.atan2(f.hy - TY, f.hx - TX) : Math.PI / 2; f.hx = TX + Math.cos(a) * (m + 8); f.hy = TY + Math.sin(a) * (m + 8); }
+  }
   for (const e of G.enemies) updEnemy(e, dt);
   const L = G.enemies;
   for (let i = 0; i < L.length; i++) {
