@@ -5,7 +5,7 @@
 const PEER_PREFIX = 'tdf-duo-v1-';
 const SNAP_MS = 50;          // 20 images par seconde
 const INTERP = 110;          // retard d'affichage côté invité (ms)
-const PK = ['arrow', 'bolt', 'orb', 'bone'];
+const PK = ['arrow', 'bolt', 'orb', 'bone', 'void', 'flame'];
 const NET = {
   mode: 'solo', peer: null, conn: null, open: false, code: '', evq: [], hostRole: 'tower',
   remote: null, sendAcc: 0, rtt: 0, pingT: 0, joinTimer: null,

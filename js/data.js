@@ -11,9 +11,11 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const lerp = (a, b, t) => a + (b - a) * t;
 const fmt = n => Math.floor(n).toLocaleString('fr-FR');
 const RORD = 'NREL';
-const VERSION = 2;
+const VERSION = 3;
 // Mode créateur : seulement en local (pas sur la version en ligne)
 const DEV_MODE = location.protocol === 'file:' || ['localhost', '127.0.0.1', ''].includes(location.hostname);
+// Écran tactile (téléphone, tablette) : commandes et interface adaptées
+const IS_TOUCH = typeof matchMedia === 'function' && (matchMedia('(pointer: coarse)').matches || (matchMedia('(hover: none)').matches && navigator.maxTouchPoints > 0));
 
 // ---------- monde ----------
 const W = 1600, H = 1000, TX = 800, TY = 520, TR = 44;
@@ -70,14 +72,41 @@ const ENEMIES = {
   scorp: { n: 'Scorpion cuirassé', ic: '🦂', hp: 130, spd: 46, dmg: 18, cd: 1.1, rad: 16, xp: 5, armor: 0.4 },
   wraith:{ n: 'Spectre', ic: '👻', hp: 60, spd: 54, dmg: 14, cd: 1.0, rad: 13, xp: 4, fly: 1 },
   boss2: { n: 'Roi-Liche', ic: '☠️', hp: 45000, spd: 15, dmg: 70, cd: 1.6, rad: 42, xp: 200, boss: 1, slam: 75, summon: ['wraith', 'skel', 'imp'] },
+  // ---- niveau 3 (à partir de la vague 11) ----
+  goule:   { n: 'Goule', ic: '🧟', hp: 70, spd: 48, dmg: 14, cd: 0.9, rad: 13, xp: 4 },
+  araignee:{ n: 'Araignée géante', ic: '🕷️', hp: 45, spd: 100, dmg: 10, cd: 0.6, rad: 12, xp: 3 },
+  behemoth:{ n: 'Béhémoth', ic: '🦏', hp: 700, spd: 22, dmg: 30, cd: 1.8, rad: 25, xp: 25, armor: 0.3, cleave: 60, info: 'Chaque coup touche tous les combattants autour de sa cible.' },
+  oeil:    { n: 'Œil du Néant', ic: '👁️', hp: 110, spd: 38, dmg: 14, cd: 2.2, rad: 14, xp: 8, fly: 1, range: 300, siege: 1, proj: 'void', info: 'Ignore les combattants et bombarde la tour de loin.' },
+  boss3:   { n: 'Kraken des abysses', ic: '🐙', hp: 100000, spd: 14, dmg: 110, cd: 1.6, rad: 46, xp: 400, boss: 1, slam: 110, slamR: 160, sumN: 4, summon: ['goule', 'araignee', 'oeil'], siege: { dmg: 30, cd: 5 } },
+  // ---- niveau 4 (à partir de la vague 16) ----
+  vampire: { n: 'Vampire', ic: '🧛', hp: 150, spd: 62, dmg: 18, cd: 0.9, rad: 14, xp: 8, drain: 1, info: 'Se soigne des dégâts qu\'il inflige.' },
+  harpie:  { n: 'Harpie', ic: '🦅', hp: 90, spd: 92, dmg: 16, cd: 0.8, rad: 13, xp: 6, fly: 1, dive: 1, info: 'Fond sur la tour sans s\'arrêter aux combattants.' },
+  djinn:   { n: 'Djinn', ic: '🧞', hp: 260, spd: 30, dmg: 18, cd: 1.4, rad: 16, xp: 15, range: 160, proj: 'void', heal: 40, info: 'Soigne les monstres autour de lui.' },
+  boss4:   { n: 'Dragon du Chaos', ic: '🐲', hp: 65000, spd: 16, dmg: 160, cd: 1.5, rad: 50, xp: 1000, boss: 1, slam: 170, slamR: 190, sumN: 4, summon: ['vampire', 'harpie', 'djinn'], siege: { dmg: 30, cd: 4 } },
 };
 const ENEMY_IDS = Object.keys(ENEMIES);
 ENEMY_IDS.forEach((k, i) => { ENEMIES[k].id = k; ENEMIES[k].ix = i; });
 
-let HP_WAVE = 0.45;  // PV des ennemis : +45 % par vague au niveau 1
-let HP_WAVE2 = 0.6;  // puis +60 % de PV par vague au niveau 2
-let DMG_WAVE2 = 0.3; // et +30 % d'attaque par vague au niveau 2
-// Niveau 1 : vagues 1 à 5 (boss à la 5) · Niveau 2 : vagues 6 à 10 (boss à la 10)
+// Montée en puissance des monstres (hors boss), par vague, selon le niveau :
+// PV +45 %/vague au niveau 1, +60 % au niveau 2, etc. Attaque : à partir du niveau 2.
+let HP_LV = [0.45, 0.6, 0.6, 0.35];
+let DMG_LV = [0, 0.3, 0.25, 0.15];
+const LEVEL_LEN = 5;   // vagues par niveau (la dernière est un boss)
+const levelOf = w => Math.max(1, Math.ceil(w / LEVEL_LEN));
+function waveMul(w, tab) {
+  let m = 1;
+  for (let i = 2; i <= w; i++) m += tab[Math.min(tab.length, levelOf(i)) - 1];
+  return m;
+}
+const waveHpMul = w => waveMul(w, HP_LV);
+const waveDmgMul = w => waveMul(w, DMG_LV);
+const LEVELS = [
+  { n: 'Les Plaines', d: '' },
+  { n: 'Les Terres maudites', d: 'De nouveaux monstres plus résistants approchent' },
+  { n: 'Les Abysses', d: 'Goules, béhémoths et yeux du Néant surgissent des profondeurs' },
+  { n: 'La Citadelle du Chaos', d: 'Vampires, harpies et djinns : la dernière ligne avant le Dragon' },
+];
+// Niveau 1 : vagues 1 à 5 · niveau 2 : 6 à 10 · niveau 3 : 11 à 15 · niveau 4 : 16 à 20 (boss à chaque fin de niveau)
 const WAVES = [
   { dur: 18, list: { gob: 10 } },
   { dur: 24, list: { gob: 12, wolf: 8 } },
@@ -89,9 +118,18 @@ const WAVES = [
   { dur: 36, list: { imp: 12, troll: 2, scorp: 6, skel: 8, wraith: 6, ogre: 4 } },
   { dur: 40, list: { imp: 16, troll: 4, scorp: 8, wraith: 8, ogre: 5, wolf: 12 } },
   { dur: 50, boss: 'boss2', list: { imp: 12, troll: 2, wraith: 6, skel: 8, scorp: 4 } },
+  { dur: 40, list: { goule: 14, araignee: 12, imp: 10, troll: 3, wraith: 6, oeil: 2 } },
+  { dur: 42, list: { goule: 18, araignee: 14, scorp: 8, wraith: 8, oeil: 4, behemoth: 1 } },
+  { dur: 44, list: { goule: 20, araignee: 16, troll: 5, scorp: 8, oeil: 5, behemoth: 2 } },
+  { dur: 46, list: { goule: 24, araignee: 20, troll: 4, wraith: 10, oeil: 6, behemoth: 3 } },
+  { dur: 55, boss: 'boss3', list: { goule: 16, araignee: 14, oeil: 4, behemoth: 2 } },
+  { dur: 46, list: { vampire: 10, harpie: 10, goule: 20, oeil: 4, djinn: 2, behemoth: 2 } },
+  { dur: 48, list: { vampire: 14, harpie: 14, araignee: 20, oeil: 5, djinn: 3, behemoth: 3 } },
+  { dur: 50, list: { vampire: 14, harpie: 14, goule: 22, troll: 3, oeil: 5, djinn: 3, behemoth: 3 } },
+  { dur: 52, list: { vampire: 16, harpie: 14, araignee: 22, scorp: 6, oeil: 5, djinn: 3, behemoth: 4 } },
+  { dur: 60, boss: 'boss4', list: { vampire: 16, harpie: 16, goule: 20, oeil: 6, djinn: 4, behemoth: 4 } },
 ];
-const LEVEL_END = 5;   // dernière vague du niveau 1
-const levelOf = w => w <= LEVEL_END ? 1 : 2;
+const LAST_BOSS = ENEMIES[WAVES[WAVES.length - 1].boss];
 
 // =====================================================================
 //  ARBRES DE COMPÉTENCES (un par rôle)

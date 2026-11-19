@@ -5,7 +5,7 @@ Jeu de défense de tour coopératif à deux, dans le navigateur.
 - **🏹 La Tour** : vous tenez l'arc au sommet de la tour. Maintenez le clic pour bander l'arc, relâchez pour tirer.
 - **🃏 L'Invocateur** : vous piochez des cartes, fusionnez les paires pour monter leur rang, et posez combattants et sorts sur le terrain.
 
-Deux niveaux de 5 vagues, chacun terminé par un boss. Chaque rôle a son propre arbre de compétences.
+20 vagues réparties en 4 niveaux de 5 vagues, chacun terminé par un boss : le Seigneur Démon (vague 5), le Roi-Liche (vague 10), le Kraken des abysses (vague 15) et le Dragon du Chaos (vague 20), presque imbattable même avec les deux arbres complets. Chaque rôle a son propre arbre de compétences.
 
 ## Jouer
 
@@ -20,3 +20,9 @@ Le jeu en ligne passe par [PeerJS](https://peerjs.com/) : les deux navigateurs s
 ## Commandes
 
 `Espace` prêt pour la vague · `clic droit` signaler un endroit · `Q` / `E` sorts de la tour · `Échap` annuler
+
+## Sur téléphone
+
+Le jeu se joue en mode paysage. Gardez le doigt sur le terrain pour bander l'arc, relâchez pour tirer. Pour un sort, touchez son bouton puis relâchez le doigt à l'endroit voulu. Dans les arbres, touchez un nœud pour le lire, encore une fois pour l'acheter, et pincez pour zoomer.
+
+Pour jouer en plein écran, ajoutez la page à l'écran d'accueil (menu du navigateur → « Ajouter à l'écran d'accueil »).

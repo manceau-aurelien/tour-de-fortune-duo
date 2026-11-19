@@ -32,6 +32,7 @@ function goLobby() {
   closeModal(); showScreen('lobby'); lobbyRender();
   if (NET.mode === 'guest' && NET.open) netSend({ t: 'prof', prof: { tower: save.tower.nodes, inv: save.inv.nodes } });
 }
+let TREE_UNPICK = () => { };
 const tip = $('#tip');
 function showTip(html, x, y) { tip.innerHTML = html; tip.classList.remove('hidden'); moveTip(x, y); }
 function moveTip(x, y) {
@@ -53,7 +54,7 @@ function refreshHub() {
   $('#btnSound').textContent = save.sound ? '🔊' : '🔇';
   $('#profName').textContent = curProfile().name;
   const st = save.stats;
-  $('#statsLine').textContent = `Parties : ${st.runs} · Victoires : ${st.wins} · Meilleure vague : ${st.bestWave >= WAVES.length ? 'Roi-Liche vaincu' : st.bestWave + '/' + WAVES.length} · Ennemis vaincus : ${fmt(st.kills)}`;
+  $('#statsLine').textContent = `Parties : ${st.runs} · Victoires : ${st.wins} · Meilleure vague : ${st.bestWave >= WAVES.length ? LAST_BOSS.n + ' vaincu' : st.bestWave + '/' + WAVES.length} · Ennemis vaincus : ${fmt(st.kills)}`;
   $('#btnLobbyBack').classList.toggle('hidden', !(NET.mode === 'host' || (NET.mode === 'guest' && NET.open)));
   if (TAB === 'tower' || TAB === 'inv') renderTree();
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === TAB));
@@ -62,7 +63,7 @@ function refreshHub() {
   $('#tabHelp').classList.toggle('hidden', TAB !== 'help');
 }
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
-  TAB = b.dataset.tab; refreshHub();
+  TAB = b.dataset.tab; TREE_UNPICK(); refreshHub();
   if (TAB === 'codex') renderCodex();
   if (TAB === 'help') renderHelp();
   if (TAB === 'tower' || TAB === 'inv') centerTree();
@@ -166,6 +167,22 @@ function openProfiles() {
 $('#btnProfile').onclick = () => openProfiles();
 
 const gameDiff = () => DEV_MODE ? save.dev.diff : 'hard';
+// ---------- téléphone : plein écran, orientation ----------
+const FS_OK = !!(document.documentElement.requestFullscreen && document.fullscreenEnabled);
+function goFull() {
+  if (!FS_OK || document.fullscreenElement) return;
+  document.documentElement.requestFullscreen({ navigationUI: 'hide' })
+    .then(() => { try { screen.orientation.lock('landscape').catch(() => { }); } catch (e) { } })
+    .catch(() => { });
+}
+$('#btnFull').classList.toggle('hidden', !(IS_TOUCH && FS_OK));
+$('#btnFull').onclick = () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => { }); else goFull(); };
+const isPortrait = () => IS_TOUCH && innerHeight > innerWidth;
+function updOrient() { document.body.classList.toggle('portrait', innerHeight > innerWidth); }
+document.body.classList.toggle('touch', IS_TOUCH);
+updOrient();
+addEventListener('resize', updOrient);
+addEventListener('orientationchange', () => setTimeout(() => { updOrient(); resize(); if (screenIs('hub')) centerTree(); }, 250));
 $('#btnDev').classList.toggle('hidden', !DEV_MODE);
 $('#btnDev').onclick = () => { if (DEV_MODE) openDevPanel(); };
 $('#pillT').onclick = () => { TAB = 'tower'; refreshHub(); centerTree(); };
@@ -269,7 +286,7 @@ function renderTree() {
   }
   box.innerHTML = h;
 }
-function nodeTipHtml(n) {
+function nodeTipHtml(n, touch) {
   const T = curTree(), st = nodeState(n), lv = nodeLv(n.id), c = T.br[n.b].c, xp = save[curKey()].xp;
   if (st === 'mystery') return `<h4>???</h4><div class="sub" style="color:${c}">${T.br[n.b].n}</div>Un savoir encore inconnu. Débloquez le nœud précédent pour le révéler.`;
   let foot = '';
@@ -278,6 +295,7 @@ function nodeTipHtml(n) {
   else {
     const cost = nodeCost(n, lv);
     foot = `<div class="foot">${n.max > 1 ? `Niveau ${lv} → ${lv + 1} · ` : ''}<span style="color:${xp >= cost ? '#9fe3ff' : '#ff7a6a'}">✦ ${fmt(cost)} XP</span></div>`;
+    if (touch && (st === 'avail' || st === 'owned')) foot += `<div style="margin-top:4px;font-size:12px;font-weight:800;color:${xp >= cost ? '#7eff9a' : '#ff7a6a'}">${xp >= cost ? '👆 Touchez encore pour acheter' : 'Pas assez d\'XP'}</div>`;
   }
   let eff = '';
   if (n.max > 1 && n.e) {
@@ -311,31 +329,72 @@ function burstDom(el, color) {
 }
 (() => {
   const w = $('#treeWrap');
-  let drag = null, moved = 0;
-  w.addEventListener('pointerdown', e => { const p = PAN[curKey()]; drag = { x: e.clientX, y: e.clientY, px: p.x, py: p.y }; moved = 0; w.setPointerCapture(e.pointerId); });
-  w.addEventListener('pointermove', e => {
-    if (drag) {
-      const dx = e.clientX - drag.x, dy = e.clientY - drag.y; moved = Math.max(moved, Math.hypot(dx, dy));
-      if (moved > 4) { const p = PAN[curKey()]; w.classList.add('drag'); p.x = drag.px + dx; p.y = drag.py + dy; applyPan(); hideTip(); return; }
-    }
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    const nd = el && el.closest && el.closest('.node');
-    if (nd) showTip(nodeTipHtml(curTree().map[nd.dataset.id]), e.clientX, e.clientY); else hideTip();
-  });
-  w.addEventListener('pointerup', e => {
-    w.classList.remove('drag');
-    if (drag && moved <= 4) {
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      const nd = el && el.closest && el.closest('.node');
-      if (nd) { buyNode(nd.dataset.id, nd); if (document.querySelector(`.node[data-id="${nd.dataset.id}"]`)) showTip(nodeTipHtml(curTree().map[nd.dataset.id]), e.clientX, e.clientY); }
-    }
-    drag = null;
-  });
-  w.addEventListener('pointerleave', hideTip);
+  let drag = null, moved = 0, picked = null, pinch = null;
+  const ptrs = new Map();
+  const nodeAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest && el.closest('.node'); };
   const zoom = (f, cx, cy) => {
     const p = PAN[curKey()], nz = clamp(p.z * f, 0.35, 1.8), k = nz / p.z;
     p.x = cx - (cx - p.x) * k; p.y = cy - (cy - p.y) * k; p.z = nz; applyPan();
   };
+  // tactile : un premier appui montre le nœud, un second l'achète
+  const pick = id => {
+    picked = id;
+    $$('.node.picked').forEach(n => n.classList.remove('picked'));
+    const el = id && document.querySelector(`.node[data-id="${id}"]`);
+    if (!el) { picked = null; hideTip(); return; }
+    el.classList.add('picked');
+    const r = el.getBoundingClientRect();
+    showTip(nodeTipHtml(curTree().map[id], true), r.left + r.width / 2, r.top + r.height / 2);
+  };
+  TREE_UNPICK = () => { if (picked) pick(null); };
+  w.addEventListener('pointerdown', e => {
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { w.setPointerCapture(e.pointerId); } catch (x) { }
+    if (ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()];
+      pinch = { d: Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)), z: PAN[curKey()].z };
+      drag = null; hideTip(); return;
+    }
+    const p = PAN[curKey()]; drag = { x: e.clientX, y: e.clientY, px: p.x, py: p.y }; moved = 0;
+  });
+  w.addEventListener('pointermove', e => {
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch) {
+      if (ptrs.size < 2) return;
+      const [a, b] = [...ptrs.values()], r = w.getBoundingClientRect(), p = PAN[curKey()];
+      const z = pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d;
+      zoom(z / p.z, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+      return;
+    }
+    const thr = e.pointerType === 'mouse' ? 4 : 10;
+    if (drag) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y; moved = Math.max(moved, Math.hypot(dx, dy));
+      if (moved > thr) { const p = PAN[curKey()]; w.classList.add('drag'); p.x = drag.px + dx; p.y = drag.py + dy; applyPan(); hideTip(); return; }
+    }
+    if (e.pointerType !== 'mouse') return;
+    const nd = nodeAt(e.clientX, e.clientY);
+    if (nd) showTip(nodeTipHtml(curTree().map[nd.dataset.id]), e.clientX, e.clientY); else hideTip();
+  });
+  const end = e => {
+    ptrs.delete(e.pointerId);
+    w.classList.remove('drag');
+    if (pinch) { if (!ptrs.size) pinch = null; drag = null; return; }
+    const thr = e.pointerType === 'mouse' ? 4 : 10;
+    if (drag && moved <= thr && e.type === 'pointerup') {
+      const nd = nodeAt(e.clientX, e.clientY);
+      if (e.pointerType === 'mouse') {
+        if (nd) { buyNode(nd.dataset.id, nd); if (document.querySelector(`.node[data-id="${nd.dataset.id}"]`)) showTip(nodeTipHtml(curTree().map[nd.dataset.id]), e.clientX, e.clientY); }
+      } else if (nd && !nd.classList.contains('mystery')) {
+        const id = nd.dataset.id;
+        if (picked === id) buyNode(id, nd);
+        pick(id);
+      } else pick(null);
+    }
+    drag = null;
+  };
+  w.addEventListener('pointerup', end);
+  w.addEventListener('pointercancel', end);
+  w.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hideTip(); });
   w.addEventListener('wheel', e => { e.preventDefault(); const r = w.getBoundingClientRect(); zoom(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   $('#zIn').onclick = () => zoom(1.2, w.clientWidth / 2, w.clientHeight / 2);
   $('#zOut').onclick = () => zoom(1 / 1.2, w.clientWidth / 2, w.clientHeight / 2);
@@ -367,7 +426,9 @@ function renderCodex() {
 function renderHelp() {
   $('#tabHelp').innerHTML = `<div class="help">
   <h2 class="tf">Comment jouer</h2>
-  <p>Deux défenseurs, un seul objectif : protéger la tour. Le <b>niveau 1</b> compte 5 vagues et se termine par un boss, le Seigneur Démon. Le <b>niveau 2</b> enchaîne avec 5 vagues de monstres plus résistants et un second boss, le Roi-Liche. Vous jouez l'un des deux rôles. L'autre est tenu par un ami en ligne, ou par une IA.</p>
+  <p>Deux défenseurs, un seul objectif : protéger la tour pendant <b>${WAVES.length} vagues</b>, réparties en <b>${LEVELS.length} niveaux</b> de 5 vagues. Chaque niveau apporte de nouveaux monstres et se termine par un boss :</p>
+  <ul>${LEVELS.map((L, i) => `<li><b>Niveau ${i + 1} · ${L.n}</b> : ${ENEMIES[WAVES[(i + 1) * LEVEL_LEN - 1].boss].ic} ${ENEMIES[WAVES[(i + 1) * LEVEL_LEN - 1].boss].n} à la vague ${(i + 1) * LEVEL_LEN}</li>`).join('')}</ul>
+  <p>Le Dragon du Chaos est conçu pour être presque imbattable, même avec les deux arbres complets. Vous jouez l'un des deux rôles. L'autre est tenu par un ami en ligne, ou par une IA.</p>
   <h3>🏹 La Tour</h3>
   <ul>
     <li><b>Maintenez le clic gauche</b> pour bander l'arc, <b>relâchez</b> pour tirer vers le curseur. Une flèche peu chargée tombe très vite : chargez pour atteindre les ennemis lointains.</li>
@@ -388,6 +449,7 @@ function renderHelp() {
   <p>« Créer une partie en ligne » vous donne un <b>code de 4 lettres</b>. Votre ami clique sur « Rejoindre » et tape ce code. L'hôte choisit qui joue quel rôle, puis lance la partie. Si un joueur se déconnecte, l'IA prend sa place.</p>
   <h3>Commandes</h3>
   <p><kbd>Espace</kbd> : prêt pour la vague · <kbd>Clic droit</kbd> : signaler un endroit au partenaire · <kbd>Q</kbd> / <kbd>E</kbd> : sorts de la tour · <kbd>Échap</kbd> : annuler · en solo : <kbd>P</kbd> pause, <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> vitesse.</p>
+  <p><b>Sur téléphone</b> (en mode paysage) : gardez le doigt sur le terrain pour bander l'arc et relâchez pour tirer. Pour un sort, touchez son bouton, puis posez le doigt sur le terrain et relâchez à l'endroit voulu. L'Invocateur fait glisser ses cartes, ou touche une carte puis le terrain. Dans les arbres, touchez un nœud pour le lire, touchez-le encore pour l'acheter, et pincez pour zoomer. Pour un vrai plein écran, ajoutez le jeu à l'écran d'accueil.</p>
   </div>`;
 }
 
@@ -488,11 +550,12 @@ function startBattleScreen(role) {
   mutateSave(s => s.lastRole = role);
   MY.ST = MODE === 'guest' ? towerStats(save.tower.nodes) : G.ST;
   MY.SI = MODE === 'guest' ? invStats(save.inv.nodes) : G.SI;
-  Object.assign(LOCAL, { down: false, charging: false, chargeT: 0, k: 0, reloadUntil: 0, mode: null, sel: null, drag: null, preview: null, pending: {}, handSig: '', prevHand: {}, seen: new Set(), hint: '' });
+  Object.assign(LOCAL, { down: false, bowPid: null, skillPid: null, charging: false, chargeT: 0, k: 0, reloadUntil: 0, mode: null, sel: null, drag: null, preview: null, pending: {}, handSig: '', prevHand: {}, seen: new Set(), hint: '' });
   resetVisuals();
   if (!ground) makeGround();
   for (const k in hudCache) delete hudCache[k];
   closeModal();
+  if (IS_TOUCH) goFull();
   showScreen('battle'); resize();
   $('#towerUI').classList.toggle('hidden', role !== 'tower');
   $('#invUI').classList.toggle('hidden', role !== 'inv');
@@ -559,6 +622,8 @@ $('#btnReady').onclick = () => { actx(); doReady(); };
 // ---------- souris sur le terrain ----------
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('pointermove', e => {
+  if (LOCAL.down && LOCAL.bowPid != null && e.pointerId !== LOCAL.bowPid) return;
+  if (LOCAL.skillPid != null && e.pointerId !== LOCAL.skillPid) return;
   LOCAL.mouse = toWorld(e);
   if (ROLE === 'inv' && LOCAL.sel != null && !LOCAL.drag) {
     const c = cardByUid(LOCAL.sel);
@@ -573,18 +638,25 @@ cv.addEventListener('pointerdown', e => {
   if (e.button === 2) { doPing(w.x, w.y); return; }
   if (e.button !== 0) return;
   if (ROLE === 'tower') {
+    if (LOCAL.mode && e.pointerType !== 'mouse') {
+      // tactile : on place la zone du doigt et le sort part quand on relâche
+      LOCAL.skillPid = e.pointerId; try { cv.setPointerCapture(e.pointerId); } catch (x) { }
+      return;
+    }
     if (LOCAL.mode === 'glue') { doGlue(w.x, w.y); LOCAL.mode = null; return; }
     if (LOCAL.mode === 'rain') { doRain(w.x, w.y); LOCAL.mode = null; return; }
-    LOCAL.down = true;
+    if (LOCAL.down) return;
+    LOCAL.down = true; LOCAL.bowPid = e.pointerId;
     try { cv.setPointerCapture(e.pointerId); } catch (x) { }
     if (!MY.ST.quick) { LOCAL.charging = true; LOCAL.chargeT = 0; LOCAL.fullSnd = false; SFX.creak(); }
   } else if (LOCAL.sel != null) {
     doPlay(LOCAL.sel, w.x, w.y); LOCAL.sel = null; LOCAL.preview = null;
   }
 });
-function releaseBow() {
+function releaseBow(e) {
   if (!LOCAL.down) return;
-  LOCAL.down = false;
+  if (e && LOCAL.bowPid != null && e.pointerId !== LOCAL.bowPid) return;
+  LOCAL.down = false; LOCAL.bowPid = null;
   if (LOCAL.charging) {
     if (LOCAL.chargeT > 0 && RV && RV.phase !== 'end') doFire(LOCAL.ang, LOCAL.k);
     LOCAL.charging = false; LOCAL.chargeT = 0; LOCAL.k = 0;
@@ -675,8 +747,17 @@ addEventListener('pointermove', e => {
   }
   d.ghost.style.opacity = d.over && d.over.kind === 'field' ? 0.3 : 0.92;
 });
+function releaseSkill(e, cancel) {
+  if (LOCAL.skillPid == null || e.pointerId !== LOCAL.skillPid) return;
+  LOCAL.skillPid = null;
+  if (cancel || !RV || RV.phase === 'end') return;
+  const m = LOCAL.mouse;
+  if (LOCAL.mode === 'glue') doGlue(m.x, m.y); else if (LOCAL.mode === 'rain') doRain(m.x, m.y);
+  LOCAL.mode = null;
+}
+addEventListener('pointercancel', e => { releaseBow(e); releaseSkill(e, true); });
 addEventListener('pointerup', e => {
-  releaseBow();
+  releaseBow(e); releaseSkill(e);
   const d = LOCAL.drag; if (!d) return;
   LOCAL.drag = null; LOCAL.preview = null; clearDropMarks();
   if (d.ghost) d.ghost.remove();
@@ -851,16 +932,16 @@ function updateHud(R) {
   let hint = '';
   if (R.phase !== 'end' && save.stats.runs < 4) {
     if (ROLE === 'tower') {
-      if (LOCAL.mode) hint = LOCAL.mode === 'glue' ? 'Cliquez sur le terrain pour lancer la glu (Échap pour annuler)' : 'Cliquez sur la zone à couvrir de flèches';
-      else if (R.phase === 'prep' && R.wave === 0) hint = MY.ST.quick ? 'Cliquez pour tirer, maintenez pour tirer en continu. Clic droit : signaler un endroit.' : '🏹 Maintenez le clic gauche pour bander l\'arc, relâchez pour tirer. Plus la flèche est chargée, plus elle va loin.';
-      else if (R.phase === 'prep') hint = 'Appuyez sur Espace quand vous êtes prêt.';
+      if (LOCAL.mode) hint = IS_TOUCH ? `Posez le doigt sur le terrain, glissez pour placer ${LOCAL.mode === 'glue' ? 'la glu' : 'la pluie'}, relâchez pour lancer (retouchez le sort pour annuler)` : LOCAL.mode === 'glue' ? 'Cliquez sur le terrain pour lancer la glu (Échap pour annuler)' : 'Cliquez sur la zone à couvrir de flèches';
+      else if (R.phase === 'prep' && R.wave === 0) hint = IS_TOUCH ? (MY.ST.quick ? 'Touchez le terrain pour tirer, gardez le doigt posé pour tirer en continu.' : '🏹 Gardez le doigt sur le terrain pour bander l\'arc, relâchez pour tirer. Plus vous attendez, plus la flèche va loin.') : MY.ST.quick ? 'Cliquez pour tirer, maintenez pour tirer en continu. Clic droit : signaler un endroit.' : '🏹 Maintenez le clic gauche pour bander l\'arc, relâchez pour tirer. Plus la flèche est chargée, plus elle va loin.';
+      else if (R.phase === 'prep') hint = IS_TOUCH ? 'Touchez « Prêt » pour lancer la vague.' : 'Appuyez sur Espace quand vous êtes prêt.';
     } else {
       const I = R.inv, cnt = {};
       let pair = false; for (const c of I.hand) { const k = c.id + c.lv; cnt[k] = (cnt[k] || 0) + 1; if (cnt[k] >= 2 && c.lv < 3) pair = true; }
       if (pair) hint = '⇄ Deux cartes identiques ! Glissez l\'une sur l\'autre pour les fusionner en une carte plus forte.';
       else if (I.hand.length >= MY.SI.handMax && R.phase === 'wave') hint = 'Main pleine : la pioche attend. Posez une carte ou jetez-en une dans la corbeille.';
-      else if (R.phase === 'prep' && R.wave === 0) hint = '🃏 Glissez une carte sur le terrain pour la poser (une toutes les 15 s). Clic droit : signaler un endroit.';
-      else if (R.phase === 'prep') hint = 'Appuyez sur Espace quand vous êtes prêt.';
+      else if (R.phase === 'prep' && R.wave === 0) hint = IS_TOUCH ? '🃏 Faites glisser une carte sur le terrain pour la poser (une toutes les 15 s), ou touchez la carte puis le terrain.' : '🃏 Glissez une carte sur le terrain pour la poser (une toutes les 15 s). Clic droit : signaler un endroit.';
+      else if (R.phase === 'prep') hint = IS_TOUCH ? 'Touchez « Prêt » pour lancer la vague.' : 'Appuyez sur Espace quand vous êtes prêt.';
     }
   }
   if (hint !== LOCAL.hint) { LOCAL.hint = hint; $('#hint').textContent = hint; $('#hint').classList.toggle('hidden', !hint); }
@@ -900,10 +981,10 @@ function showEndModal(info) {
   const online = MODE !== 'solo' && NET.open && !info.lost;
   $('#modalRoot').innerHTML = `<div class="modal"><div class="mbox">
     <h2 class="tf" style="color:${win ? '#ffcc4d' : '#ff7a6a'}">${win ? '🏆 Victoire !' : info.lost ? (info.quit ? '🚪 Partie quittée' : '📡 Connexion perdue') : '💀 Défaite'}</h2>
-    <div class="sub">${win ? 'Le Roi-Liche est tombé : les deux niveaux sont terminés. Bravo à vous deux !' : info.lost ? 'Vous gardez l\'expérience déjà gagnée.' : 'La tour s\'est effondrée, mais votre savoir grandit.'}</div>
+    <div class="sub">${win ? `${LAST_BOSS.n} est tombé : les ${LEVELS.length} niveaux sont terminés. Exploit légendaire, bravo à vous deux !` : info.lost ? 'Vous gardez l\'expérience déjà gagnée.' : 'La tour s\'est effondrée, mais votre savoir grandit.'}</div>
     <div class="rows">
       <div><span>Vagues repoussées</span><b>${waves}</b></div>
-      <div><span>Niveau atteint</span><b>${win ? 'Les deux niveaux terminés !' : 'Niveau ' + levelOf(Math.max(1, info.wave || 1))}</b></div>
+      <div><span>Niveau atteint</span><b>${win ? `Les ${LEVELS.length} niveaux terminés !` : `Niveau ${levelOf(Math.max(1, info.wave || 1))} · ${LEVELS[Math.min(LEVELS.length, levelOf(Math.max(1, info.wave || 1))) - 1].n}`}</b></div>
       <div><span>Ennemis vaincus</span><b>${info.kills || 0}</b></div>
       ${roleRow}
       <div><span>Expérience gagnée (${ROLE_INFO[ROLE].ic} ${ROLE_INFO[ROLE].nn})${xmul > 1 ? ` · mode créateur ×${xmul}` : ''}</span><b style="color:#9fe3ff">+${fmt(gained)} ✦</b></div>
@@ -928,6 +1009,7 @@ function pump() {
   const now = performance.now();
   let dt = (now - lastSim) / 1000; lastSim = now;
   if (!G || MODE === 'guest' || !screenIs('battle') || G.paused) return;
+  if (MODE === 'solo' && isPortrait()) return;
   dt = Math.min(dt, document.hidden ? 1.5 : 0.1);
   let rem = dt * (G.phase === 'end' ? 1 : G.speed);
   while (rem > 1e-6) { const s = Math.min(rem, 1 / 50); simUpdate(s); rem -= s; }
@@ -977,6 +1059,7 @@ addEventListener('beforeunload', () => { if (NET.open) netSend({ t: 'bye' }); })
 // =====================================================================
 //  DÉMARRAGE
 // =====================================================================
+if (IS_TOUCH) $('#treeHint .h2').textContent = 'Touchez un nœud pour le lire, encore pour l\'acheter · pincez pour zoomer';
 refreshHub();
 requestAnimationFrame(centerTree);
 addEventListener('resize', () => { if (screenIs('hub')) centerTree(); });
@@ -985,7 +1068,7 @@ if (!save.intro) {
   $('#modalRoot').innerHTML = `<div class="modal"><div class="mbox">
     <h2 class="tf" style="color:#ffcc4d">🏰 Tour de Fortune · Duo</h2>
     <div class="sub" style="font-size:15.5px;line-height:1.55;color:#d6d2c6;text-align:left">
-    Deux défenseurs, une seule tour. Tenez <b>10 vagues</b> de monstres sur deux niveaux, chacun terminé par un <b>boss</b>.<br><br>
+    Deux défenseurs, une seule tour. Tenez <b>${WAVES.length} vagues</b> de monstres sur ${LEVELS.length} niveaux, chacun terminé par un <b>boss</b>.<br><br>
     🏹 <b>La Tour</b> : vous tenez l'arc. Maintenez le clic pour charger, relâchez pour tirer.<br>
     🃏 <b>L'Invocateur</b> : vous piochez des cartes, fusionnez les paires et posez combattants et sorts sur le terrain.<br><br>
     Jouez avec un ami en ligne grâce à un code, ou avec une IA. Chaque rôle a son propre <b>arbre de compétences</b>.</div>

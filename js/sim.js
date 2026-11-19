@@ -35,8 +35,11 @@ function launchWave() {
   const wv = WAVES[G.wave - 1];
   buildQueue(wv);
   if (wv.boss) { fx('banner', 'LE BOSS ARRIVE', ENEMIES[wv.boss].n, '#c040ff'); fx('sfx', 'boss'); fx('shake', 10); }
-  else if (G.wave === LEVEL_END + 1) { fx('banner', 'Niveau 2 · Vague 6', 'De nouveaux monstres plus résistants approchent', '#ff6a4a'); fx('sfx', 'boss'); }
+  else if (G.wave > 1 && (G.wave - 1) % LEVEL_LEN === 0) { const L = LEVELS[levelOf(G.wave) - 1]; fx('banner', `Niveau ${levelOf(G.wave)} · ${L.n}`, L.d, '#ff6a4a'); fx('sfx', 'boss'); }
   else { fx('banner', `Vague ${G.wave}`, `${G.queue.length} ennemis approchent`, '#ff6a4a'); fx('sfx', 'wave'); }
+  // nouveau monstre dans cette partie : on explique sa particularité
+  G.seenT = G.seenT || {};
+  for (const t in wv.list) if (!G.seenT[t]) { G.seenT[t] = 1; if (ENEMIES[t].info) fx('notice', `Nouveau : ${ENEMIES[t].ic} ${ENEMIES[t].n}. ${ENEMIES[t].info}`); }
   if (G.SI.startDraw) invDraw(G.SI.startDraw);
   if (G.SI.waveCharge) { G.inv.charges = Math.min(G.SI.charges, G.inv.charges + G.SI.waveCharge); invRefresh(); }
 }
@@ -67,12 +70,13 @@ function spawnEnemy(type, a, x, y) {
   const D = ENEMIES[type];
   const p = x !== undefined ? { x, y } : edgePoint(a);
   const w = Math.max(1, G.wave);
-  const hpMul = (D.boss ? 1 : w <= LEVEL_END ? 1 + HP_WAVE * (w - 1) : 1 + HP_WAVE * (LEVEL_END - 1) + HP_WAVE2 * (w - LEVEL_END)) * G.diff.hp;
+  const hpMul = (D.boss ? 1 : waveHpMul(w)) * G.diff.hp;
   const e = {
-    kind: 'e', uid: G.nid++, type, D, x: p.x, y: p.y, hp: D.hp * hpMul, max: D.hp * hpMul, spd: D.spd * rand(0.92, 1.08), dmg: D.dmg * G.diff.atk * (!D.boss && w > LEVEL_END ? 1 + DMG_WAVE2 * (w - LEVEL_END) : 1), cd: D.cd, t: rand(0, D.cd),
+    kind: 'e', uid: G.nid++, type, D, x: p.x, y: p.y, hp: D.hp * hpMul, max: D.hp * hpMul, spd: D.spd * rand(0.92, 1.08), dmg: D.dmg * G.diff.atk * (D.boss ? 1 : waveDmgMul(w)), cd: D.cd, t: rand(0, D.cd),
     rad: D.rad, range: D.range || 0, fly: !!D.fly, xp: D.xp, boss: !!D.boss, seed: rand(0, 99),
     slowT: 0, slowF: 0, stunT: 0, vulnT: 0, hitT: 0, burnT: 0, burnDps: 0, glued: false, dead: false, fade: 0, moving: true, atkT: 0, face: 1,
     slamT: 6, sumT: 8, enraged: false, regen: (D.regen || 0) * hpMul, armor: D.armor || 0,
+    heal: (D.heal || 0) * hpMul, healT: rand(0.5, 2), siegeT: 4,
   };
   G.enemies.push(e);
   if (e.boss) G.bossRef = e;
@@ -89,7 +93,8 @@ function waveCleared() {
     G.levelUp = false;
     const h = G.tower.max * 0.5; G.tower.hp = Math.min(G.tower.max, G.tower.hp + h);
     fx('text', TX, TY - 175, `Tour réparée : +${Math.round(h)} PV`, '#7eff9a', 18, 1.8);
-    fx('banner', 'NIVEAU 1 TERMINÉ !', `+${fmt(bonus + G.levelBonus)} XP · Le niveau 2 commence…`, '#ffcc4d');
+    const lv = levelOf(G.wave);
+    fx('banner', `NIVEAU ${lv} TERMINÉ !`, `+${fmt(bonus + G.levelBonus)} XP · Le niveau ${lv + 1} commence…`, '#ffcc4d');
   } else {
     const next = WAVES[G.wave];
     fx('banner', `Vague ${G.wave} repoussée !`, `+${fmt(bonus)} XP · ${next && next.boss ? 'Le boss approche…' : 'Préparez la suite'}`, '#7eff9a');
@@ -101,10 +106,10 @@ function endRun(win) {
   G.phase = 'end'; G.result = win ? 'win' : 'lose'; G.endT = 0;
   G.tower.charging = false; G.tower.charge = 0;
   if (win) {
-    const bonus = 150;
+    const bonus = 400;
     G.xp += bonus; G.winBonus = bonus;
     for (const e of G.enemies) if (!e.dead) { e.dead = true; e.fade = 0; }
-    fx('banner', 'VICTOIRE !', `${ENEMIES.boss2.n} est vaincu · les deux niveaux sont terminés`, '#ffcc4d'); fx('confetti');
+    fx('banner', 'VICTOIRE !', `${LAST_BOSS.n} est vaincu · les ${LEVELS.length} niveaux sont terminés`, '#ffcc4d'); fx('confetti');
   } else {
     fx('banner', 'La tour est tombée…', '', '#ff4a3a'); fx('towerDown');
   }
@@ -473,9 +478,22 @@ function updEnemy(e, dt) {
   if (e.slowT > 0) { e.slowT -= dt; spd *= 1 - e.slowF; }
   if (gstop) spd *= e.boss ? 0.25 : 0; else if (gl) spd *= e.boss ? 0.6 : 0.35;
   if (e.boss) bossAbilities(e, dt);
+  if (e.heal) {
+    e.healT -= dt;
+    if (e.healT <= 0) {
+      e.healT = 2;
+      let n = 0;
+      for (const o of G.enemies) if (!o.dead && !o.boss && o.hp < o.max && Math.hypot(o.x - e.x, o.y - e.y) < 150) { o.hp = Math.min(o.max, o.hp + e.heal); n++; }
+      if (n) fx('enemyHeal', Math.round(e.x), Math.round(e.y));
+    }
+  }
   let tgt = null;
   const dTower = Math.hypot(e.x - TX, e.y - TY);
-  if (e.range) {
+  if (e.D.siege && !e.boss) {
+    if (dTower <= e.range + TR) tgt = 'tower';
+  } else if (e.D.dive) {
+    if (dTower <= TR + e.rad + 4) tgt = 'tower';
+  } else if (e.range) {
     const nf = nearestFighter(e, e.range);
     if (nf) tgt = nf; else if (dTower <= e.range + TR) tgt = 'tower';
   } else {
@@ -494,10 +512,15 @@ function updEnemy(e, dt) {
 function enemyAttack(e, tgt) {
   e.atkT = 0.18;
   if (e.range) {
-    G.proj.push({ uid: G.nid++, x: e.x, y: e.y - 14, tg: tgt, tx: tgt === 'tower' ? TX : tgt.x, ty: tgt === 'tower' ? TY - 30 : tgt.y, spd: 420, dmg: e.dmg, kind: 'bone', ally: false, src: e, ang: 0 });
+    G.proj.push({ uid: G.nid++, x: e.x, y: e.y - 14 - (e.fly ? 28 : 0), tg: tgt, tx: tgt === 'tower' ? TX : tgt.x, ty: tgt === 'tower' ? TY - 30 : tgt.y, spd: 420, dmg: e.dmg, kind: e.D.proj || 'bone', ally: false, src: e, ang: 0 });
     return;
   }
-  if (tgt === 'tower') hurtTower(e.dmg, e); else hurtFighter(tgt, e.dmg);
+  if (tgt === 'tower') hurtTower(e.dmg, e);
+  else {
+    hurtFighter(tgt, e.dmg);
+    if (e.D.cleave) { for (const f of G.fighters) if (f !== tgt && !f.dead && dist(f, tgt) < e.D.cleave) hurtFighter(f, e.dmg * 0.5); fx('slam', Math.round(tgt.x), Math.round(tgt.y), e.D.cleave); }
+  }
+  if (e.D.drain && !e.dead) e.hp = Math.min(e.max, e.hp + e.dmg * e.D.drain);
   if (e.boss) { fx('shake', 4); fx('sfx', 'boom'); }
 }
 function bossAbilities(e, dt) {
@@ -507,7 +530,7 @@ function bossAbilities(e, dt) {
   }
   if (e.slamT <= 0) {
     e.slamT = e.enraged ? 4.5 : 6.5;
-    const R = 130;
+    const R = e.D.slamR || 130;
     const near = G.fighters.some(f => !f.dead && dist(f, e) < R) || Math.hypot(e.x - TX, e.y - TY) < R + 30;
     if (near) {
       fx('bossSlam', Math.round(e.x), Math.round(e.y), R);
@@ -516,9 +539,16 @@ function bossAbilities(e, dt) {
       if (Math.hypot(e.x - TX, e.y - TY) < R + TR) hurtTower(sd * 0.45, null);
     } else e.slamT = 1;
   }
+  if (e.D.siege) {
+    e.siegeT -= dt;
+    if (e.siegeT <= 0) {
+      e.siegeT = e.D.siege.cd * (e.enraged ? 0.7 : 1);
+      G.proj.push({ uid: G.nid++, x: e.x, y: e.y - e.rad * 1.6, tg: 'tower', tx: TX, ty: TY - 30, spd: 360, dmg: e.D.siege.dmg * G.diff.atk, kind: 'flame', ally: false, src: null, ang: 0 });
+    }
+  }
   if (e.sumT <= 0) {
     e.sumT = e.enraged ? 6 : 9;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < (e.D.sumN || 3); i++) {
       const a = rand(0, Math.PI * 2);
       const m = spawnEnemy(pick(e.D.summon || ['gob']), 0, e.x + Math.cos(a) * 55, e.y + Math.sin(a) * 40);
       fx('bossSummon', Math.round(m.x), Math.round(m.y));
@@ -548,8 +578,8 @@ function killEnemy(e) {
   if (e.boss) {
     if (G.wave >= WAVES.length) endRun(true);
     else {
-      // fin du niveau 1 : l'escorte du boss se disperse
-      G.queue = []; G.levelUp = true; G.levelBonus = 60; G.xp += 60;
+      // fin d'un niveau : l'escorte du boss se disperse
+      G.queue = []; G.levelUp = true; G.levelBonus = 60 * levelOf(G.wave); G.xp += G.levelBonus;
       for (const o of G.enemies) if (!o.dead) { o.dead = true; o.fade = 0; fx('bossSummon', Math.round(o.x), Math.round(o.y)); }
       fx('confetti');
     }
@@ -658,7 +688,7 @@ function aiTower(dt) {
     for (const e of L) {
       const h = hitPoint(e), d = Math.hypot(h.x - OX, h.y - OY);
       if (d > S.range + 30) continue;
-      const s = Math.hypot(e.x - TX, e.y - TY) - (e.boss ? 120 : 0) - (e.range ? 40 : 0);
+      const s = Math.hypot(e.x - TX, e.y - TY) - (e.boss ? 120 : 0) - (e.range ? 40 : 0) - (e.D.siege ? 160 : 0) - (e.D.dive ? 90 : 0) - (e.D.heal ? 60 : 0);
       if (s < bs) { bs = s; best = e; }
     }
     if (best !== A.tgt) A.err = rand(-1, 1) * AI_ERR;

@@ -70,7 +70,8 @@ function resetVisuals() {
   V.shake = 0; V.flash = 0; V.tint = { frost: 0, storm: 0, time: 0 };
 }
 function part(x, y, vx, vy, life, color, size, grav = 0, type) {
-  if (V.parts.length > 1400) return;
+  if (V.parts.length > (IS_TOUCH ? 600 : 1400)) return;
+  if (IS_TOUCH && Math.random() < 0.35) return;   // téléphone : allège les effets
   V.parts.push({ x, y, vx, vy, life, max: life, color, size, grav, type });
 }
 function ring(x, y, color, r, life) { V.fx.push({ t: 0, ground: true, upd(dt) { this.t += dt; return this.t < life; }, draw(c) { const k = this.t / life; c.strokeStyle = color; c.globalAlpha = 1 - k; c.lineWidth = 4 * (1 - k) + 1; c.beginPath(); c.ellipse(x, y, r * (0.2 + 0.8 * Math.sqrt(k)), r * 0.6 * (0.2 + 0.8 * Math.sqrt(k)), 0, 0, 7); c.stroke(); c.globalAlpha = 1; } }); }
@@ -268,6 +269,8 @@ const FX = {
     ring(x, y, '#c040ff', R, 0.5); ring(x, y, '#ff80ff', R * 0.6, 0.35);
     for (let i = 0; i < 30; i++) part(x, y, rand(-260, 260), rand(-200, 60), rand(0.4, 0.8), pick(['#7a3fa0', '#c070ff', '#3a2a40']), rand(3, 7), 300);
   },
+  notice(msg) { if (typeof toast === 'function') toast(msg); },
+  enemyHeal(x, y) { ring(x, y, 'rgba(120,255,140,0.8)', 150, 0.6); for (let k = 0; k < 8; k++) part(x + rand(-60, 60), y + rand(-30, 30), 0, rand(-60, -30), 0.7, '#7eff9a', 3, 0); },
   bossSummon(x, y) { for (let k = 0; k < 10; k++) part(x, y, rand(-50, 50), rand(-80, 0), rand(0.4, 0.8), '#9b4dff', rand(3, 5), 0); },
   towerDown() {
     for (let i = 0; i < 80; i++) part(TX + rand(-50, 50), TY + rand(-20, 10), rand(-150, 150), rand(-200, -20), rand(0.8, 1.6), pick(['#8a7a60', '#5a5040', '#b0a080']), rand(4, 10), 120);
@@ -321,7 +324,7 @@ const cv = $('#cv'), ctx = cv.getContext('2d');
 let DPR = 1;
 const view = { s: 1, ox: 0, oy: 0, x0: 0, y0: 0, x1: W, y1: H };
 function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1);
+  DPR = Math.min(IS_TOUCH ? 1.75 : 2, window.devicePixelRatio || 1);
   cv.width = innerWidth * DPR; cv.height = innerHeight * DPR;
   cv.style.width = innerWidth + 'px'; cv.style.height = innerHeight + 'px';
   const s = Math.min(innerWidth / W, innerHeight / H) * 1.04;
@@ -514,6 +517,8 @@ function drawUnit(c, u) {
   c.globalAlpha = 1;
 }
 function drawProj(c, p) {
+  if (p.kind === 'void') { glow(c, p.x, p.y, 13, 'rgba(150,60,255,0.7)'); c.fillStyle = '#1a0830'; c.beginPath(); c.arc(p.x, p.y, 6, 0, 7); c.fill(); c.strokeStyle = '#c58bff'; c.lineWidth = 1.5; c.stroke(); if (Math.random() < 0.4) part(p.x, p.y, rand(-15, 15), rand(-15, 15), 0.35, '#8a3cff', 3, 0); return; }
+  if (p.kind === 'flame') { glow(c, p.x, p.y, 26, 'rgba(255,120,30,0.6)'); c.fillStyle = '#ffd36a'; c.beginPath(); c.arc(p.x, p.y, 10, 0, 7); c.fill(); for (let i = 0; i < 2; i++) part(p.x, p.y, rand(-30, 30), rand(-30, 30), rand(0.3, 0.5), pick(['#ffdc5a', '#ff8a2a', '#ff4a1a']), rand(4, 7), 0, 'fire'); return; }
   if (p.kind === 'orb') { glow(c, p.x, p.y, 10, '#c58bff'); c.fillStyle = '#f0dcff'; c.beginPath(); c.arc(p.x, p.y, 5, 0, 7); c.fill(); if (Math.random() < 0.5) part(p.x, p.y, rand(-20, 20), rand(-20, 20), 0.3, '#c58bff', 3, 0); return; }
   c.save(); c.translate(p.x, p.y); c.rotate(p.ang || 0);
   if (p.kind === 'arrow') { c.strokeStyle = '#e8d8b0'; c.lineWidth = 2; c.beginPath(); c.moveTo(-12, 0); c.lineTo(6, 0); c.stroke(); c.fillStyle = '#ddd'; c.beginPath(); c.moveTo(9, 0); c.lineTo(3, -3); c.lineTo(3, 3); c.fill(); }
